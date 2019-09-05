@@ -1,54 +1,28 @@
 package com.cgogolin.library
 
-import java.util.ArrayList
-import java.util.Arrays
-import java.util.Collections
-import java.util.Comparator
-
-import java.io.File
-import java.io.InputStream
-import java.io.InputStreamReader
-import java.io.BufferedReader
-import java.io.OutputStream
-
-import android.content.Context
-import android.content.Intent
-import android.content.ActivityNotFoundException
-import android.content.pm.ResolveInfo
-import android.content.pm.PackageManager
-
-import android.net.Uri
-
-import android.util.Log
-
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import android.view.ViewGroup.LayoutParams
-import android.view.ViewGroup.MarginLayoutParams
-import android.view.View.MeasureSpec
-
-import android.view.View.OnClickListener
-
-import android.widget.BaseAdapter
-import android.widget.Button
-import android.widget.TextView
-import android.widget.LinearLayout
-import android.widget.Toast
-
 //import android.animation.LayoutTransition;
 //import android.animation.ObjectAnimator;
 //import android.animation.AnimatorSet;
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.AsyncTask
-
-import android.webkit.MimeTypeMap
-
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.View.OnClickListener
+import android.view.ViewGroup
+import android.view.ViewGroup.LayoutParams
 import android.view.animation.Animation
-import android.view.animation.Animation.AnimationListener
 import android.view.animation.Transformation
-import java.util.HashMap
-
+import android.webkit.MimeTypeMap
+import android.widget.*
+import java.io.InputStream
+import java.io.OutputStream
+import java.util.*
 import java.util.Arrays.fill
 
 open class BibtexAdapter @Throws(java.io.IOException::class)
@@ -70,8 +44,8 @@ constructor(inputStream: InputStream) : BaseAdapter() {
     private val mRowStates: IntArray
     private var separatorComparator: Comparator<BibtexEntry>? = null
 
-    internal var applyFilterTask: AsyncTask<Any, Void, Void>? = null
-    internal var sortTask: AsyncTask<BibtexAdapter.SortMode, Void, Void>? = null
+    private var applyFilterTask: AsyncTask<Any, Void, Void>? = null
+    private var sortTask: AsyncTask<BibtexAdapter.SortMode, Void, Void>? = null
     val groups: Set<String>
         get() = groupMap.keys
 
@@ -101,7 +75,7 @@ constructor(inputStream: InputStream) : BaseAdapter() {
     open fun onPostBackgroundOperation() {}
     fun onBackgroundOperationCanceled() {}
     open fun onEntryClick(v: View) {}
-    fun addToGroup(groupName: String, entry: BibtexEntry) {
+    private fun addToGroup(groupName: String, entry: BibtexEntry) {
         if (!groupMap.containsKey(groupName)) {
             groupMap[groupName] = ArrayList()
         }
@@ -230,17 +204,17 @@ constructor(inputStream: InputStream) : BaseAdapter() {
 
         when (sortMode) {
             BibtexAdapter.SortMode.None -> {
-                Collections.sort(displayedBibtexEntryList!!) { entry1, entry2 -> entry1.numberInFile.compareTo(entry2.numberInFile) }
+                displayedBibtexEntryList!!.sortWith(Comparator { entry1, entry2 -> entry1.numberInFile.compareTo(entry2.numberInFile) })
                 separatorComparator = null
             }
             SortMode.Date -> {
-                Collections.sort(displayedBibtexEntryList!!) { entry1, entry2 -> (entry2.dateFormated + entry2.numberInFile).compareTo(entry1.dateFormated + entry1.numberInFile) }
+                displayedBibtexEntryList!!.sortWith(Comparator { entry1, entry2 -> (entry2.dateFormated + entry2.numberInFile).compareTo(entry1.dateFormated + entry1.numberInFile) })
                 separatorComparator = Comparator { entry1, entry2 -> entry2.year!!.compareTo(entry1.year!!) }
             }
             SortMode.Author -> {
                 displayedBibtexEntryList!!.sortWith(Comparator { entry1, entry2 -> (entry1.authorSortKey + entry1.numberInFile).compareTo(entry2.authorSortKey + entry2.numberInFile) })
                 separatorComparator = Comparator { entry1, entry2 ->
-                    if (entry1.authorSortKey!!.length == 0 && entry1.authorSortKey!!.isEmpty())
+                    if (entry1.authorSortKey!!.isEmpty() && entry1.authorSortKey!!.isEmpty())
                         0
                     else if (entry1.authorSortKey!!.isEmpty())
                         -1
@@ -308,6 +282,7 @@ constructor(inputStream: InputStream) : BaseAdapter() {
 
         if (convertView == null) {
             convertView = inflater.inflate(R.layout.bibtexentry, null)
+//            convertView = inflater.inflate(R.layout.bibtexentry, parent) // #MattWasHere ... caused error
         }
 
         if (displayedBibtexEntryList == null || displayedBibtexEntryList!!.size == 0) {
@@ -601,16 +576,15 @@ constructor(inputStream: InputStream) : BaseAdapter() {
         intent.setDataAndType(uri, type)
         try {
             context!!.startActivity(intent)
-            if (android.os.Build.VERSION.SDK_INT >= 19) {
-                //Taken from http://stackoverflow.com/questions/18249007/how-to-use-support-fileprovider-for-sharing-content-to-other-apps
-                try {
-                    val resInfoList = context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
-                    for (resolveInfo in resInfoList) {
-                        val packageName = resolveInfo.activityInfo.packageName
-                        context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                    }
-                } catch (e: Exception) {
+
+            //Taken from http://stackoverflow.com/questions/18249007/how-to-use-support-fileprovider-for-sharing-content-to-other-apps
+            try {
+                val resInfoList = context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+                for (resolveInfo in resInfoList) {
+                    val packageName = resolveInfo.activityInfo.packageName
+                    context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
                 }
+            } catch (e: Exception) {
             }
         } catch (e: ActivityNotFoundException) {
             Toast.makeText(context, context!!.getString(R.string.no_application_to_view_files_of_type) + " " + type + ".", Toast.LENGTH_SHORT).show()

@@ -1,14 +1,9 @@
 package com.cgogolin.library
 
-import java.util.ArrayList
-import java.util.Arrays
-
-import android.util.Log
-
-import java.io.File
+import java.io.BufferedReader
 import java.io.InputStream
 import java.io.InputStreamReader
-import java.io.BufferedReader
+import java.util.*
 
 object BibtexParser {
     @Throws(java.io.IOException::class)
@@ -35,7 +30,7 @@ object BibtexParser {
             if (buffer.indexOf('@') == -1) continue@SEARCH_FOR_ENTRY
 
             //Now we have an '@', so start processing the bibtex entry by
-            //throwing away everyting before and including the first '@' and triming whitespaces
+            //throwing away everything before and including the first '@' and triming whitespaces
             buffer = buffer.substring(buffer.indexOf('@') + 1).trim { it <= ' ' }
 
             //Continue reading lines until we have a '{' and a ',' in the buffer so that we know
@@ -63,7 +58,11 @@ object BibtexParser {
                 //If we have not yet found an '=' or a '}' continue reading
                 if (buffer.indexOf('=') == -1 && buffer.indexOf('}') == -1) {
                     //Break if we reach the end of the file, otherwise add the line to the buffer
-                    val line = bufferedReader.readLine() ?: break@SEARCH_FOR_ENTRY
+                    val line = bufferedReader.readLine()
+                    if (line == null) {
+                        println("breaking because reached the end of the file")
+                        break@SEARCH_FOR_ENTRY
+                    }
                     buffer += line.trim { it <= ' ' }
                 }
                 if (buffer.indexOf('=') == -1 && buffer.indexOf('}') == -1) continue@SEARCH_FOR_TAG
@@ -72,12 +71,12 @@ object BibtexParser {
                 if (buffer.indexOf('}') != -1 && (buffer.indexOf('=') == -1 || buffer.indexOf('}') < buffer.indexOf('='))) {
 
                     //Throw away the rest of this entry and break
-                    if (buffer.indexOf('}') + 1 < buffer.length) {
-                        buffer = buffer.substring(buffer.indexOf('}') + 1)
-                    } else {
-                        buffer = ""
-                    }
+                    buffer = if (buffer.indexOf('}') + 1 < buffer.length) {
+                        buffer.substring(buffer.indexOf('}') + 1)
+                    } else ""
+
                     //We have found all tags of this entry so stop searching for more
+                    println("breaking because We have found all tags of this entry so stop searching for more")
                     break@SEARCH_FOR_TAG
                 }
 
@@ -87,7 +86,10 @@ object BibtexParser {
                 val name = buffer.substring(0, buffer.indexOf('=')).trim { it <= ' ' }.toLowerCase()
 
                 //If name contains whitespaces we have a malformed tag name and thus break and serch for a new entry
-                if (name !== name.replace(" ", "")) break@SEARCH_FOR_TAG
+                if (name != name.replace(" ", "")) {
+                    println("breaking because name contains whitespaces we have a malformed tag name:{${name}}")
+                    break@SEARCH_FOR_TAG
+                }
 
                 //Now we extract the value
                 var value = ""
@@ -95,7 +97,7 @@ object BibtexParser {
                 //Discard the name and the '=' from the buffer
                 buffer = buffer.substring(buffer.indexOf('=') + 1).trim { it <= ' ' }
 
-                //Treat the value of the tag differentyl depending on the delimiter
+                //Treat the value of the tag differently depending on the delimiter
                 val Delimiter1 = buffer[0]
 
                 when (Delimiter1) {
@@ -103,7 +105,12 @@ object BibtexParser {
                     -> {
                         //Continue reading lines until we find the first possible delimiter character
                         while (buffer.indexOf(' ') == -1 && buffer.indexOf('}') == -1 && buffer.indexOf(',') == -1 && buffer.indexOf('\"') == -1) {
-                            val line = bufferedReader.readLine() ?: break@SEARCH_FOR_ENTRY
+                            val line = bufferedReader.readLine()
+                            if (line == null) {
+                                println("breaking because end of file or something while looking for first possible delimiter character")
+                                break@SEARCH_FOR_ENTRY
+                            }
+
                             buffer += line.trim { it <= ' ' }
                         }
                         //Now that we have at least one non digit character in the buffer we intepret the first non interrupted sequence of numbers as the value of the tag
@@ -119,30 +126,36 @@ object BibtexParser {
                         val Delimiter2 = if (Delimiter1 == '{') '}' else '\"'
                         //Discard the opening delimiter and put it into value
                         buffer = buffer.substring(1)
-                        value = Character.toString(Delimiter1)
+                        value = Delimiter1.toString()
                         //Find the closing delimiter of the value
                         do {
-                            //Continue reading until we find the first unescaped closing delemiter
-                            while (buffer.replace("\\\\", "").replace("\\" + Delimiter2, "").indexOf(Delimiter2.toInt().toChar()) == -1) {
+                            //Continue reading until we find the first unescaped closing delimiter
+                            while (buffer.replace("\\\\", "").replace("\\" + Delimiter2, "").indexOf(Delimiter2) == -1) {
                                 val line = bufferedReader.readLine()
-                                if ((line) == null) break@SEARCH_FOR_ENTRY
+                                if (line == null) {
+                                    println("breaking because end of file or something while looking for first unescaped closing delimiter")
+                                    break@SEARCH_FOR_ENTRY
+                                }
                                 buffer += line.trim { it <= ' ' }
                             }
                             //Find the position of the first unescaped closing delemiter
-                            lengthOfValue = buffer.replace("\\\\", "__").replace("\\" + Delimiter2, "__").indexOf(Delimiter2.toInt().toChar())
+                            lengthOfValue = buffer.replace("\\\\", "__").replace("\\" + Delimiter2, "__").indexOf(Delimiter2)
 
                             //Copy the everything before and including the closing delimiter into value and remove it from the buffer
-                            value = value + buffer.substring(0, lengthOfValue + 1) //Closing delimiter is put into value
+                            value += buffer.substring(0, lengthOfValue + 1) //Closing delimiter is put into value
                             buffer = buffer.substring(lengthOfValue + 1) //Closing delimiter not left in buffer
-                        } while (value.replace("\\\\", "__").replace("\\" + Delimiter1, "__").replace("\\" + Delimiter2, "__").replace(Character.toString(Delimiter1), "").length != value.replace("\\\\", "__").replace("\\" + Delimiter1, "__").replace("\\" + Delimiter2, "__").replace(Character.toString(Delimiter2), "").length) //While value is not "balanced"
+                        } while (value.replace("\\\\", "__").replace("\\" + Delimiter1, "__").replace("\\" + Delimiter2, "__").replace(Delimiter1.toString(), "").length != value.replace("\\\\", "__").replace("\\" + Delimiter1, "__").replace("\\" + Delimiter2, "__").replace(Delimiter2.toString(), "").length) //While value is not "balanced"
                     }
                     else //Try to be nice and also read non bibtex conform values assuming that the value consist of exactly one word
                     -> {
                         //Continue reading lines until we find the first possible delimiter character
                         while (buffer.indexOf(' ') == -1 && buffer.indexOf('}') == -1 && buffer.indexOf(',') == -1 && buffer.indexOf('\"') == -1) {
                             val line = bufferedReader.readLine()
-                            if ((line) == null) break@SEARCH_FOR_ENTRY
-                            buffer += line!!.trim { it <= ' ' }
+                            if (line == null) {
+                                println("breaking because end of file or something while looking for first possible delimiter character")
+                                break@SEARCH_FOR_ENTRY
+                            }
+                            buffer += line.trim { it <= ' ' }
                         }
                         //Now that we have at least one non letter character in the buffer we intepret the first non interrupted sequence of letters as the value of the tag
                         var lengthOfWord = 0
@@ -154,8 +167,11 @@ object BibtexParser {
                         //Remove everything until the next ',', '}' or '@' in an attempt to read the rest of the entry and file
                         while (buffer.indexOf(',') == -1 && buffer.indexOf('}') == -1 && buffer.indexOf('@') == -1) {
                             val line = bufferedReader.readLine()
-                            if ((line) == null) break@SEARCH_FOR_ENTRY
-                            buffer = buffer + line!!.trim { it <= ' ' }
+                            if (line == null) {
+                                println("breaking because end of file or something while reading rest if entry")
+                                break@SEARCH_FOR_ENTRY
+                            }
+                            buffer += line.trim { it <= ' ' }
                         }
                         var cutoff = if (buffer.indexOf(',') == -1) 0 else buffer.indexOf(',')
                         cutoff = if (buffer.indexOf('}') == -1 || cutoff < buffer.indexOf('}')) cutoff else buffer.indexOf('}')
@@ -165,20 +181,30 @@ object BibtexParser {
                 }
 
                 //Discard a trailing ',' that might be left in the buffer
-                if (buffer.length > 0 && buffer[0] == ',')
-                    if (buffer.length > 1)
-                        buffer = buffer.substring(1)
+                if (buffer.isNotEmpty() && buffer[0] == ',')
+                    buffer = if (buffer.length > 1)
+                        buffer.substring(1)
                     else
-                        buffer = ""
+                        ""
 
                 //Trim left over delimiters from the value
                 value = trimDelimiters(value)
                 //Add the bibtex tag to the entry
+                println("PUTTING name={${name}},value={${value}}")
                 entry.put(name, value)
             }
+            println("ADDING ${entry.numberInFile}")
             BibtexEntryList.add(entry)
         }
         bufferedReader.close()
+
+        println("parsed!!!")
+        BibtexEntryList.forEach {
+            println("title:${it.title}")
+            if (it.title.isNullOrBlank()) {
+                it.entryMap["title"] = "NO_TITLE :("
+            }
+        }
 
         return BibtexEntryList
     }

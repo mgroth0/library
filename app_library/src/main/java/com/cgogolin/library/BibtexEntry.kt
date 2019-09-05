@@ -1,10 +1,7 @@
 package com.cgogolin.library
 
 import android.content.Context
-
-import java.util.HashMap
-import java.util.ArrayList
-import java.util.Arrays
+import java.util.*
 import java.util.regex.Pattern
 
 class BibtexEntry : BaseBibtexEntry() {

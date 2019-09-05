@@ -6,8 +6,8 @@ import java.util.Arrays
 
 open class BaseBibtexEntry {
 
-    private val entryMap: HashMap<String, String>
-    private val latexPrettyPrinterEntryMap: HashMap<String, String>
+    val entryMap: HashMap<String, String> = HashMap()
+    private val latexPrettyPrinterEntryMap: HashMap<String, String> = HashMap()
 
     val label: String?
         get() = saveGet("label")
@@ -138,11 +138,6 @@ open class BaseBibtexEntry {
         }
     val year: String?
         get() = saveGet("year")
-
-    init {
-        entryMap = HashMap()
-        latexPrettyPrinterEntryMap = HashMap()
-    }
 
     fun put(name: String, value: String) {
         entryMap[name] = value

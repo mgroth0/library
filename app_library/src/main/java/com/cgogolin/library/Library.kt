@@ -1,67 +1,31 @@
 package com.cgogolin.library
 
-import java.io.File
-import java.io.InputStream
-import java.io.FileInputStream
-
-import java.util.ArrayList
-import java.util.regex.Pattern
-import android.util.Log
-
 import android.app.Activity
-
-import android.os.Bundle
-
-import android.content.Context
-import android.content.SharedPreferences
-import android.content.DialogInterface
-import android.content.Intent
-import android.content.ActivityNotFoundException
-import android.content.pm.PackageManager
-
-import android.Manifest.permission
-import android.app.ActionBar
 import android.app.AlertDialog
-import android.app.DownloadManager
 import android.app.SearchManager
-
-import android.support.v4.content.FileProvider
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.AsyncTask
+import android.os.Bundle
 import android.support.v4.provider.DocumentFile
 import android.support.v4.view.MenuItemCompat
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.SearchView
-
-import android.view.View
-import android.view.View.OnClickListener
-import android.view.Window
+import android.text.InputType
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
-import android.view.MenuInflater
-import android.view.MotionEvent
-import android.view.KeyEvent
-import android.view.inputmethod.EditorInfo
-import android.view.MenuItem.OnMenuItemClickListener
+import android.view.View
 import android.view.inputmethod.InputMethodManager
-
-import android.text.InputType
-
-import android.widget.Button
-import android.widget.TextView
-import android.widget.EditText
-import android.widget.TextView.OnEditorActionListener
-import android.widget.Toast
-import android.widget.ListView
-import android.widget.ProgressBar
-import android.widget.AdapterView
-import android.widget.AdapterView.OnItemClickListener
-import android.widget.PopupMenu
-import android.widget.LinearLayout
+import android.widget.*
 import android.widget.LinearLayout.LayoutParams
-import android.webkit.MimeTypeMap
-
-import android.net.Uri
-
-import android.os.AsyncTask
+import java.io.File
+import java.io.FileInputStream
+import java.io.InputStream
+import java.util.*
+import java.util.regex.Pattern
 
 class Library : AppCompatActivity(), SearchView.OnQueryTextListener {
 
@@ -99,38 +63,25 @@ class Library : AppCompatActivity(), SearchView.OnQueryTextListener {
 
     internal inner class LibraryBibtexAdapter @Throws(java.io.IOException::class)
     constructor(private val context: Context, inputStream: InputStream) : BibtexAdapter(inputStream) {
-        internal override fun getUriForActionViewIntent(path: String?): Uri? {
+        override fun getUriForActionViewIntent(path: String?): Uri? {
 
-            if (android.os.Build.VERSION.SDK_INT < 21) {
-                val uri = Uri.parse("file://" + path!!)
-                var file: File? = null
-                if (path != null && uri != null) {
-                    file = File(uri.path!!)
-                }
-                if (uri == null || !file!!.isFile) {
-                    Toast.makeText(context, context.getString(R.string.couldnt_find_file) + " " + path + ".\n\n" + context.getString(R.string.path_conversion_hint), Toast.LENGTH_LONG).show()
-                    return null
-                } else
-                    return uri
+            //New versions of Android want files to be shared through a content:// Uri and not via a file:// Uri
+            //First we convert backslashes to slashes and remove Windows style drive letters and then try to idenitfy the uri corresponding to the path in the bibtex file
+            val uri = getUriInLibraryFolder(path)
+            if (uri != null) {
+                Log.i(getString(R.string.app_name), "got the following uri for this path:$uri and libraryFolderRootUri=$libraryFolderRootUri")
+                val file = DocumentFile.fromSingleUri(context, uri)
             } else {
-                //New versions of Android want files to be shared through a content:// Uri and not via a file:// Uri
-                //First we convert backslashes to slashes and remove Windows style drive letters and then try to idenitfy the uri corresponding to the path in the bibtex file
-                val uri = getUriInLibraryFolder(path)
-                if (uri != null) {
-                    Log.i(getString(R.string.app_name), "got the following uri for this path:$uri and libraryFolderRootUri=$libraryFolderRootUri")
-                    val file = DocumentFile.fromSingleUri(context, uri)
-                } else {
-                    libraryFolderRootUri = null
-                }
-                if (uri == null || libraryFolderRootUri == null) {
-                    showSetLibraryFolderRootDialog(path)
-                    return null
-                } else
-                    return uri
+                libraryFolderRootUri = null
             }
+            if (uri == null || libraryFolderRootUri == null) {
+                showSetLibraryFolderRootDialog(path)
+                return null
+            } else
+                return uri
         }
 
-        internal override fun getModifiedPath(path: String): String {
+        override fun getModifiedPath(path: String): String {
             return if (android.os.Build.VERSION.SDK_INT < 21)
             //Some versions of Android suffer from this very stupid bug:
             //http://stackoverflow.com/questions/16475317/android-bug-string-substring5-replace-empty-string
@@ -354,30 +305,31 @@ class Library : AppCompatActivity(), SearchView.OnQueryTextListener {
         var message = getString(R.string.please_enter_path_of_bibtex_library)
         if (bibtexAdapter == null && libraryWasPreviouslyInitializedCorrectly)
             message = getString(R.string.adapter_failed_to_intialized) + "\n\n" + message
-        if (android.os.Build.VERSION.SDK_INT >= 19) {
-            /*On newer versions of Android offer to use the file system picker to chose the bibtex library file*/
-            val button = Button(context)
-            button.text = getString(R.string.pick_bibtex_library)
-            button.setOnClickListener {
-                if (android.os.Build.VERSION.SDK_INT >= 21)
-                    setLibraryFolderRootUri(null)
 
-                val openDocumentIntent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-                openDocumentIntent.addCategory(Intent.CATEGORY_OPENABLE)
-                openDocumentIntent.type = "*/*"
-                openDocumentIntent.flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-                startActivityForResult(openDocumentIntent, LIBRARY_FILE_PICK_REQUEST)
-            }
-            editTextLayout.addView(button)
+        /*On newer versions of Android offer to use the file system picker to chose the bibtex library file*/
+        val button = Button(context)
+        button.text = getString(R.string.pick_bibtex_library)
+        button.setOnClickListener {
+
+            setLibraryFolderRootUri(null)
+
+            val openDocumentIntent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            openDocumentIntent.addCategory(Intent.CATEGORY_OPENABLE)
+            openDocumentIntent.type = "*/*"
+            openDocumentIntent.flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            startActivityForResult(openDocumentIntent, LIBRARY_FILE_PICK_REQUEST)
         }
+        editTextLayout.addView(button)
+
         val alertDialogBuilder = AlertDialog.Builder(this)
         alertDialogBuilder
                 .setTitle(getString(R.string.menu_set_library_path))
                 .setMessage(message)
                 .setView(editTextLayout)
                 .setPositiveButton(getString(R.string.save)) { dialog, whichButton ->
-                    if (android.os.Build.VERSION.SDK_INT >= 21)
-                        setLibraryFolderRootUri(null)
+
+                    setLibraryFolderRootUri(null)
+
                     setLibraryPathDialog = null
                     setLibraryPath(input.text.toString().trim { it <= ' ' })
                     bibtexAdapter = null
@@ -756,20 +708,20 @@ class Library : AppCompatActivity(), SearchView.OnQueryTextListener {
             SELECT_GROUP_REQUEST -> if (resultCode == Activity.RESULT_OK) {
                 group = intent!!.getStringExtra("group")
                 filterAndSortInBackground(filter, sortMode, group)
-                val group_titlebar = findViewById<View>(R.id.group_titlebar) as TextView
+                val groupTitleBar = findViewById<View>(R.id.groupTitleBar) as TextView
 
                 if (bibtexAdapter!!.groups.contains(group)) {
-                    group_titlebar.text = group
-                    group_titlebar.visibility = View.VISIBLE
+                    groupTitleBar.text = group
+                    groupTitleBar.visibility = View.VISIBLE
                 } else {
-                    group_titlebar.text = ""
-                    group_titlebar.visibility = View.GONE
+                    groupTitleBar.text = ""
+                    groupTitleBar.visibility = View.GONE
                 }
             }
         }
     }
 
-    internal fun setLibraryPath(newLibraryPathString: String) {
+    private fun setLibraryPath(newLibraryPathString: String) {
         val globalSettings = getSharedPreferences(GLOBAL_SETTINGS, Context.MODE_PRIVATE)
         val globalSettingsEditor = globalSettings.edit()
         globalSettingsEditor.putString("bibtexUrlString", newLibraryPathString)
@@ -826,10 +778,10 @@ class Library : AppCompatActivity(), SearchView.OnQueryTextListener {
 
     companion object {
 
-        val GLOBAL_SETTINGS = "global settings"
-        val LIBRARY_FILE_PICK_REQUEST = 0
-        val WRITE_PERMISSION_REQUEST = 1
-        val SET_LIBRARY_FOLDER_ROOT_REQUEST = 2
-        val SELECT_GROUP_REQUEST = 3
+        const val GLOBAL_SETTINGS = "global settings"
+        const val LIBRARY_FILE_PICK_REQUEST = 0
+        const val WRITE_PERMISSION_REQUEST = 1
+        const val SET_LIBRARY_FOLDER_ROOT_REQUEST = 2
+        const val SELECT_GROUP_REQUEST = 3
     }
 }
